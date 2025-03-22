@@ -17,6 +17,7 @@ class WatermarkApp(QMainWindow):
         self.image_paths = []
         self.current_image = None
         self.original_image = None
+        self.watermark_image = None
         self.font_path = self.get_chinese_font()
         self.initUI()
 
@@ -77,6 +78,31 @@ class WatermarkApp(QMainWindow):
         self.offset_slider.valueChanged.connect(self.update_watermark)
         control_layout.addWidget(self.offset_slider)
 
+        self.load_watermark_btn = QPushButton('加载图片水印')
+        self.load_watermark_btn.clicked.connect(self.load_watermark_image)
+        control_layout.addWidget(self.load_watermark_btn)
+
+        self.watermark_position_combo = QComboBox(self)
+        self.watermark_position_combo.addItems(["下", "上", "左", "右"])
+        self.watermark_position_combo.currentIndexChanged.connect(self.update_watermark)
+        control_layout.addWidget(self.watermark_position_combo)
+
+        self.watermark_size_label = QLabel("图片水印大小 (%)")
+        control_layout.addWidget(self.watermark_size_label)
+        self.watermark_size_slider = QSlider(Qt.Horizontal)
+        self.watermark_size_slider.setRange(10, 200)
+        self.watermark_size_slider.setValue(100)
+        self.watermark_size_slider.valueChanged.connect(self.update_watermark)
+        control_layout.addWidget(self.watermark_size_slider)
+
+        self.watermark_opacity_label = QLabel("图片水印透明度 (%)")
+        control_layout.addWidget(self.watermark_opacity_label)
+        self.watermark_opacity_slider = QSlider(Qt.Horizontal)
+        self.watermark_opacity_slider.setRange(0, 100)
+        self.watermark_opacity_slider.setValue(100)
+        self.watermark_opacity_slider.valueChanged.connect(self.update_watermark)
+        control_layout.addWidget(self.watermark_opacity_slider)
+
         self.graphics_view = QGraphicsView(self)
         self.graphics_scene = QGraphicsScene()
         self.graphics_view.setScene(self.graphics_scene)
@@ -115,6 +141,12 @@ class WatermarkApp(QMainWindow):
             self.update_watermark()
             self.fit_image_to_view()
 
+    def load_watermark_image(self):
+        file, _ = QFileDialog.getOpenFileName(self, "选择水印图片", "", "Images (*.png *.jpg *.jpeg *.bmp)")
+        if file:
+            self.watermark_image = Image.open(file).convert('RGBA')
+            self.update_watermark()
+
     def fit_image_to_view(self):
         if self.current_image is not None:
             self.graphics_view.fitInView(self.image_item, Qt.KeepAspectRatio)
@@ -128,23 +160,20 @@ class WatermarkApp(QMainWindow):
             pixmap = QPixmap.fromImage(q_image)
             self.image_item.setPixmap(pixmap)
             self.graphics_scene.setSceneRect(0, 0, w, h)
-
     def update_watermark(self):
         if self.original_image is None:
             return
 
         self.current_image = self.original_image.copy()
-
-        text = self.text_input.text()
-        position = self.position_combo.currentText()
-        opacity = int(self.opacity_input.text()) * 255 // 100
-        font_size = int(self.font_size_input.text())
-        offset_percentage = self.offset_slider.value() / 100
-
         image = Image.fromarray(cv2.cvtColor(self.current_image, cv2.COLOR_BGR2RGB))
         overlay = Image.new('RGBA', image.size, (255, 255, 255, 0))
         draw = ImageDraw.Draw(overlay)
-        font = ImageFont.truetype(self.font_path, font_size)
+        font = ImageFont.truetype(self.font_path, int(self.font_size_input.text()))
+
+        text = self.text_input.text()
+        text_position = self.position_combo.currentText()
+        opacity = int(self.opacity_input.text()) * 255 // 100
+        offset_percentage = self.offset_slider.value() / 100
 
         bbox = draw.textbbox((0, 0), text, font)
         text_width = bbox[2] - bbox[0]
@@ -160,7 +189,35 @@ class WatermarkApp(QMainWindow):
             "右上角": (image.width - text_width - offset_x, offset_y)
         }
 
-        draw.text(positions[position], text, font=font, fill=(255, 255, 255, opacity))
+        text_pos = positions[text_position]
+        draw.text(text_pos, text, font=font, fill=(255, 255, 255, opacity))
+
+        if self.watermark_image:
+            watermark_pos = self.watermark_position_combo.currentText()
+            wm_scale = self.watermark_size_slider.value() / 100
+            wm_opacity = int(self.watermark_opacity_slider.value() * 255 / 100)
+
+            wm_resized = self.watermark_image.resize(
+                (int(self.watermark_image.width * wm_scale), int(self.watermark_image.height * wm_scale)),
+                Image.Resampling.LANCZOS
+            ).convert('RGBA')
+
+            alpha = wm_resized.split()[3]
+            alpha = Image.eval(alpha, lambda a: wm_opacity * a // 255)
+            wm_resized.putalpha(alpha)
+
+            wm_w, wm_h = wm_resized.size
+
+            wm_positions = {
+                "下": (text_pos[0] + (text_width - wm_w) // 2, text_pos[1] + text_height + 10),
+                "上": (text_pos[0] + (text_width - wm_w) // 2, text_pos[1] - wm_h - 10),
+                "左": (text_pos[0] - wm_w - 10, text_pos[1] + (text_height - wm_h) // 2),
+                "右": (text_pos[0] + text_width + 10, text_pos[1] + (text_height - wm_h) // 2)
+            }
+
+            wm_x, wm_y = wm_positions[watermark_pos]
+            overlay.paste(wm_resized, (wm_x, wm_y), wm_resized)
+
         self.current_image = cv2.cvtColor(np.array(Image.alpha_composite(image.convert('RGBA'), overlay)), cv2.COLOR_RGBA2BGR)
         self.show_image()
 
