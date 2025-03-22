@@ -38,77 +38,107 @@ class WatermarkApp(QMainWindow):
         control_layout = QVBoxLayout()
         control_container = QWidget()
         control_container.setLayout(control_layout)
-        control_container.setFixedWidth(int(self.width() * 0.2))
+        control_container.setFixedWidth(int(self.width() * 0.3))
 
+        # 通用方法创建标签 + 输入框布局
+        def add_labeled_input(label_text, input_widget, default_value=None):
+            layout = QHBoxLayout()
+            label = QLabel(label_text)
+            label.setFixedWidth(120)  # 统一设置宽度
+            layout.addWidget(label)
+
+            if default_value is not None:
+                input_widget.setText(default_value)
+            layout.addWidget(input_widget)
+            control_layout.addLayout(layout)
+
+        # 加载图片按钮
         self.load_btn = QPushButton('加载图片')
         self.load_btn.clicked.connect(self.load_images)
         control_layout.addWidget(self.load_btn)
 
+        # 文本输入（初始值为"测试"）
         self.text_input = QLineEdit(self)
-        self.text_input.setPlaceholderText("输入水印文本")
+        self.text_input.setText("测试")
         self.text_input.textChanged.connect(self.update_watermark)
-        control_layout.addWidget(self.text_input)
+        add_labeled_input("水印文本", self.text_input)
 
+        # 位置（初始值为"右下角"）
         self.position_combo = QComboBox(self)
         self.position_combo.addItems(["右下角", "左下角", "左上角", "右上角"])
+        self.position_combo.setCurrentText("右下角")
         self.position_combo.currentIndexChanged.connect(self.update_watermark)
-        control_layout.addWidget(self.position_combo)
+        add_labeled_input("位置", self.position_combo)
 
-        self.opacity_label = QLabel("透明度 (%)")
-        control_layout.addWidget(self.opacity_label)
+        # 透明度（初始值为50）
         self.opacity_input = QLineEdit(self)
-        self.opacity_input.setText("50")
         self.opacity_input.setValidator(QIntValidator(0, 100))
+        self.opacity_input.setText("50")
         self.opacity_input.textChanged.connect(self.update_watermark)
-        control_layout.addWidget(self.opacity_input)
+        add_labeled_input("透明度 (%)", self.opacity_input)
 
-        self.font_size_label = QLabel("字体大小")
-        control_layout.addWidget(self.font_size_label)
+        # 字体大小（初始值为220）
         self.font_size_input = QLineEdit(self)
-        self.font_size_input.setText("40")
-        self.font_size_input.setValidator(QIntValidator(10, 100))
+        self.font_size_input.setValidator(QIntValidator(10, 500))
+        self.font_size_input.setText("220")
         self.font_size_input.textChanged.connect(self.update_watermark)
-        control_layout.addWidget(self.font_size_input)
+        add_labeled_input("字体大小", self.font_size_input)
 
-        self.offset_label = QLabel("边距偏移 (%)")
-        control_layout.addWidget(self.offset_label)
-        self.offset_slider = QSlider(Qt.Horizontal)
-        self.offset_slider.setRange(0, 20)
-        self.offset_slider.setValue(5)
-        self.offset_slider.valueChanged.connect(self.update_watermark)
-        control_layout.addWidget(self.offset_slider)
+        # 水平偏移（初始值为120）
+        self.offset_x_input = QLineEdit(self)
+        self.offset_x_input.setValidator(QIntValidator(0, 1000))
+        self.offset_x_input.setText("120")
+        self.offset_x_input.textChanged.connect(self.update_watermark)
+        add_labeled_input("水平偏移 (px)", self.offset_x_input)
 
+        # 垂直偏移（初始值为120）
+        self.offset_y_input = QLineEdit(self)
+        self.offset_y_input.setValidator(QIntValidator(0, 1000))
+        self.offset_y_input.setText("120")
+        self.offset_y_input.textChanged.connect(self.update_watermark)
+        add_labeled_input("垂直偏移 (px)", self.offset_y_input)
+
+        # 文字和图片间隔（初始值为5）
+        self.spacing_input = QLineEdit(self)
+        self.spacing_input.setValidator(QIntValidator(0, 100))
+        self.spacing_input.setText("5")
+        self.spacing_input.textChanged.connect(self.update_watermark)
+        add_labeled_input("文字和图片间隔 (px)", self.spacing_input)
+
+        # 加载图片水印按钮
         self.load_watermark_btn = QPushButton('加载图片水印')
         self.load_watermark_btn.clicked.connect(self.load_watermark_image)
         control_layout.addWidget(self.load_watermark_btn)
 
+        # 图片水印位置（初始值为"上"）
         self.watermark_position_combo = QComboBox(self)
         self.watermark_position_combo.addItems(["下", "上", "左", "右"])
+        self.watermark_position_combo.setCurrentText("上")
         self.watermark_position_combo.currentIndexChanged.connect(self.update_watermark)
-        control_layout.addWidget(self.watermark_position_combo)
+        add_labeled_input("图片水印位置", self.watermark_position_combo)
 
-        self.watermark_size_label = QLabel("图片水印大小 (%)")
-        control_layout.addWidget(self.watermark_size_label)
-        self.watermark_size_slider = QSlider(Qt.Horizontal)
-        self.watermark_size_slider.setRange(10, 200)
-        self.watermark_size_slider.setValue(100)
-        self.watermark_size_slider.valueChanged.connect(self.update_watermark)
-        control_layout.addWidget(self.watermark_size_slider)
+        # 图片水印大小（初始值为40%）
+        self.watermark_size_input = QLineEdit(self)
+        self.watermark_size_input.setValidator(QIntValidator(10, 200))
+        self.watermark_size_input.setText("40")
+        self.watermark_size_input.textChanged.connect(self.update_watermark)
+        add_labeled_input("图片水印大小 (%)", self.watermark_size_input)
 
-        self.watermark_opacity_label = QLabel("图片水印透明度 (%)")
-        control_layout.addWidget(self.watermark_opacity_label)
-        self.watermark_opacity_slider = QSlider(Qt.Horizontal)
-        self.watermark_opacity_slider.setRange(0, 100)
-        self.watermark_opacity_slider.setValue(100)
-        self.watermark_opacity_slider.valueChanged.connect(self.update_watermark)
-        control_layout.addWidget(self.watermark_opacity_slider)
+        # 图片水印透明度（初始值为80%）
+        self.watermark_opacity_input = QLineEdit(self)
+        self.watermark_opacity_input.setValidator(QIntValidator(0, 100))
+        self.watermark_opacity_input.setText("80")
+        self.watermark_opacity_input.textChanged.connect(self.update_watermark)
+        add_labeled_input("图片水印透明度 (%)", self.watermark_opacity_input)
 
+        # 图像显示区域
         self.graphics_view = QGraphicsView(self)
         self.graphics_scene = QGraphicsScene()
         self.graphics_view.setScene(self.graphics_scene)
         self.image_item = QGraphicsPixmapItem()
         self.graphics_scene.addItem(self.image_item)
 
+        # 主要布局
         main_layout.addWidget(control_container)
         main_layout.addWidget(self.graphics_view, 4)
 
@@ -116,11 +146,15 @@ class WatermarkApp(QMainWindow):
         container.setLayout(main_layout)
         self.setCentralWidget(container)
 
+        # 显示设置
         self.graphics_view.setDragMode(QGraphicsView.ScrollHandDrag)
         self.graphics_view.setRenderHint(QPainter.Antialiasing)
         self.graphics_view.setRenderHint(QPainter.SmoothPixmapTransform)
         self.graphics_view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.graphics_view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+
+
+
 
     def wheelEvent(self, event):
         factor = 1.2 if event.angleDelta().y() > 0 else 0.8
@@ -168,20 +202,21 @@ class WatermarkApp(QMainWindow):
         image = Image.fromarray(cv2.cvtColor(self.current_image, cv2.COLOR_BGR2RGB))
         overlay = Image.new('RGBA', image.size, (255, 255, 255, 0))
         draw = ImageDraw.Draw(overlay)
+        
         font = ImageFont.truetype(self.font_path, int(self.font_size_input.text()))
-
         text = self.text_input.text()
         text_position = self.position_combo.currentText()
         opacity = int(self.opacity_input.text()) * 255 // 100
-        offset_percentage = self.offset_slider.value() / 100
-
+        
+        # 计算文本宽度和高度
         bbox = draw.textbbox((0, 0), text, font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
 
-        offset_x = int(image.width * offset_percentage)
-        offset_y = int(image.height * offset_percentage)
+        offset_x = int(self.offset_x_input.text())
+        offset_y = int(self.offset_y_input.text())
 
+        # 设置文字水印的位置
         positions = {
             "右下角": (image.width - text_width - offset_x, image.height - text_height - offset_y),
             "左下角": (offset_x, image.height - text_height - offset_y),
@@ -190,13 +225,17 @@ class WatermarkApp(QMainWindow):
         }
 
         text_pos = positions[text_position]
+        
+        # 绘制文字水印
         draw.text(text_pos, text, font=font, fill=(255, 255, 255, opacity))
 
+        # 如果加载了图片水印
         if self.watermark_image:
             watermark_pos = self.watermark_position_combo.currentText()
-            wm_scale = self.watermark_size_slider.value() / 100
-            wm_opacity = int(self.watermark_opacity_slider.value() * 255 / 100)
+            wm_scale = int(self.watermark_size_input.text()) / 100
+            wm_opacity = int(self.watermark_opacity_input.text()) * 255 // 100
 
+            # 调整水印大小
             wm_resized = self.watermark_image.resize(
                 (int(self.watermark_image.width * wm_scale), int(self.watermark_image.height * wm_scale)),
                 Image.Resampling.LANCZOS
@@ -208,18 +247,29 @@ class WatermarkApp(QMainWindow):
 
             wm_w, wm_h = wm_resized.size
 
+            # ✅ 读取用户设置的间隔
+            spacing = int(self.spacing_input.text())
+
+            # ✅ 根据位置动态设置水印位置
             wm_positions = {
-                "下": (text_pos[0] + (text_width - wm_w) // 2, text_pos[1] + text_height + 10),
-                "上": (text_pos[0] + (text_width - wm_w) // 2, text_pos[1] - wm_h - 10),
-                "左": (text_pos[0] - wm_w - 10, text_pos[1] + (text_height - wm_h) // 2),
-                "右": (text_pos[0] + text_width + 10, text_pos[1] + (text_height - wm_h) // 2)
+                "下": (text_pos[0] + (text_width - wm_w) // 2, text_pos[1] + text_height + spacing),
+                "上": (text_pos[0] + (text_width - wm_w) // 2, text_pos[1] - wm_h - spacing),
+                "左": (text_pos[0] - wm_w - spacing, text_pos[1] + (text_height - wm_h) // 2),
+                "右": (text_pos[0] + text_width + spacing, text_pos[1] + (text_height - wm_h) // 2)
             }
 
             wm_x, wm_y = wm_positions[watermark_pos]
+
+            # ✅ 粘贴图片水印
             overlay.paste(wm_resized, (wm_x, wm_y), wm_resized)
 
-        self.current_image = cv2.cvtColor(np.array(Image.alpha_composite(image.convert('RGBA'), overlay)), cv2.COLOR_RGBA2BGR)
+        # 合成图片和水印
+        self.current_image = cv2.cvtColor(
+            np.array(Image.alpha_composite(image.convert('RGBA'), overlay)),
+            cv2.COLOR_RGBA2BGR
+        )
         self.show_image()
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
