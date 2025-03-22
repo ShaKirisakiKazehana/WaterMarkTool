@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QFileDialog, QLabel, QPushButton,
                              QVBoxLayout, QHBoxLayout, QWidget, QLineEdit, QComboBox,
-                             QGraphicsView, QGraphicsScene, QGraphicsPixmapItem)
+                             QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QSlider)
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QIntValidator
 from PyQt5.QtCore import Qt
 
@@ -69,6 +69,14 @@ class WatermarkApp(QMainWindow):
         self.font_size_input.textChanged.connect(self.update_watermark)
         control_layout.addWidget(self.font_size_input)
 
+        self.offset_label = QLabel("边距偏移 (%)")
+        control_layout.addWidget(self.offset_label)
+        self.offset_slider = QSlider(Qt.Horizontal)
+        self.offset_slider.setRange(0, 20)
+        self.offset_slider.setValue(5)
+        self.offset_slider.valueChanged.connect(self.update_watermark)
+        control_layout.addWidget(self.offset_slider)
+
         self.graphics_view = QGraphicsView(self)
         self.graphics_scene = QGraphicsScene()
         self.graphics_view.setScene(self.graphics_scene)
@@ -131,6 +139,7 @@ class WatermarkApp(QMainWindow):
         position = self.position_combo.currentText()
         opacity = int(self.opacity_input.text()) * 255 // 100
         font_size = int(self.font_size_input.text())
+        offset_percentage = self.offset_slider.value() / 100
 
         image = Image.fromarray(cv2.cvtColor(self.current_image, cv2.COLOR_BGR2RGB))
         overlay = Image.new('RGBA', image.size, (255, 255, 255, 0))
@@ -141,11 +150,14 @@ class WatermarkApp(QMainWindow):
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
 
+        offset_x = int(image.width * offset_percentage)
+        offset_y = int(image.height * offset_percentage)
+
         positions = {
-            "右下角": (image.width - text_width - 10, image.height - text_height - 10),
-            "左下角": (10, image.height - text_height - 10),
-            "左上角": (10, 10),
-            "右上角": (image.width - text_width - 10, 10)
+            "右下角": (image.width - text_width - offset_x, image.height - text_height - offset_y),
+            "左下角": (offset_x, image.height - text_height - offset_y),
+            "左上角": (offset_x, offset_y),
+            "右上角": (image.width - text_width - offset_x, offset_y)
         }
 
         draw.text(positions[position], text, font=font, fill=(255, 255, 255, opacity))
