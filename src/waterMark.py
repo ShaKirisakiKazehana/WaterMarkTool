@@ -2,10 +2,11 @@ import sys
 import os
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QFileDialog, QLabel, QPushButton,
                              QVBoxLayout, QHBoxLayout, QWidget, QLineEdit, QComboBox,
-                             QGraphicsView, QGraphicsScene, QGraphicsPixmapItem)
+                             QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QDialog,
+                             QDialogButtonBox, QSpinBox, QCheckBox)
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QIntValidator
 from PyQt5.QtCore import Qt
 
@@ -18,13 +19,15 @@ class WatermarkProcessor:
         self.original_image = original_image
         self.font_path = font_path
 
-    def apply_text_watermark(self, image, text, font_size, position, opacity, offset_x, offset_y):
+    def apply_text_watermark(self, image, text, font_size, position, opacity, offset_x, offset_y, shadow=False, shadow_width=0):
         """
         在传入的 PIL 图像上添加文本水印，返回叠加图层、文本位置及文本尺寸。
+        如果 shadow 为 True，则在文字四周添加渐变阴影（只出现在文字外部），阴影模糊半径由 shadow_width 指定，
+        阴影不会覆盖文字本身。
         """
         overlay = Image.new('RGBA', image.size, (255, 255, 255, 0))
-        draw = ImageDraw.Draw(overlay)
         font = ImageFont.truetype(self.font_path, font_size)
+        draw = ImageDraw.Draw(overlay)
         bbox = draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
@@ -35,6 +38,27 @@ class WatermarkProcessor:
             "右上角": (image.width - text_width - offset_x, offset_y)
         }
         text_pos = positions.get(position, (image.width - text_width - offset_x, image.height - text_height - offset_y))
+        
+        if shadow and shadow_width > 0:
+            # 创建文字mask（灰度图，白色区域为文字区域）
+            mask = Image.new("L", image.size, 0)
+            mask_draw = ImageDraw.Draw(mask)
+            mask_draw.text(text_pos, text, font=font, fill=255)
+            # 对mask进行高斯模糊
+            blurred = mask.filter(ImageFilter.GaussianBlur(radius=shadow_width))
+            # 得到仅在文字外部的阴影区域（将原始文字mask减去）
+            shadow_mask = ImageChops.subtract(blurred, mask)
+            # 调整阴影透明度（阴影透明度为文字透明度的一半）
+            desired_shadow_alpha = int(opacity * 0.5)
+            shadow_mask = shadow_mask.point(lambda p: p * (desired_shadow_alpha / 255.0))
+            # 生成阴影层（填充黑色）
+            shadow_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+            shadow_layer.putalpha(shadow_mask)
+            # 将阴影层合成到底部
+            overlay = Image.alpha_composite(overlay, shadow_layer)
+        
+        # 绘制正常文字（确保文字区域不被阴影覆盖）
+        draw = ImageDraw.Draw(overlay)
         draw.text(text_pos, text, font=font, fill=(255, 255, 255, opacity))
         return overlay, text_pos, (text_width, text_height)
 
@@ -78,7 +102,7 @@ class WatermarkProcessor:
         """
         base_image = Image.fromarray(cv2.cvtColor(self.original_image, cv2.COLOR_BGR2RGB)).convert('RGBA')
         overlay = Image.new('RGBA', base_image.size, (255, 255, 255, 0))
-        # 文本水印参数
+        # 文本水印参数（opacity由百分比转换为0-255）
         text_overlay, text_pos, text_size = self.apply_text_watermark(
             base_image,
             text,
@@ -86,10 +110,12 @@ class WatermarkProcessor:
             text_params.get("position", "右下角"),
             int(text_params.get("opacity", 50)) * 255 // 100,
             text_params.get("offset_x", 120),
-            text_params.get("offset_y", 120)
+            text_params.get("offset_y", 120),
+            shadow=text_params.get("shadow", False),
+            shadow_width=text_params.get("shadow_width", 0)
         )
         overlay = Image.alpha_composite(overlay, text_overlay)
-        # 图片水印（如果存在）
+        # 如果有图片水印，则添加
         if image_watermark and image_params:
             overlay = self.apply_image_watermark(overlay, image_watermark, text_pos, text_size, image_params)
         final_image = Image.alpha_composite(base_image, overlay)
@@ -109,10 +135,88 @@ def get_chinese_font():
             return path
     return None
 
+class ExportDialog(QDialog):
+    """
+    自定义对话框，允许用户选择输出格式、输出路径和（针对 JPEG）压缩质量。
+    """
+    def __init__(self, default_output, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("输出图片设置")
+        self.selected_format = "JPEG"
+        self.output_path = default_output
+        self.jpeg_quality = 95  # 默认高画质压缩
+
+        # 输出格式选择
+        format_label = QLabel("输出格式:")
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["JPEG", "PNG"])
+        self.format_combo.currentTextChanged.connect(self.on_format_changed)
+
+        # 输出文件路径
+        file_label = QLabel("输出文件:")
+        self.file_line_edit = QLineEdit(default_output)
+        browse_btn = QPushButton("浏览")
+        browse_btn.clicked.connect(self.browse_file)
+
+        file_layout = QHBoxLayout()
+        file_layout.addWidget(self.file_line_edit)
+        file_layout.addWidget(browse_btn)
+
+        # JPEG质量设置
+        quality_label = QLabel("JPEG质量:")
+        self.quality_spin = QSpinBox()
+        self.quality_spin.setRange(1, 100)
+        self.quality_spin.setValue(95)
+        self.quality_spin.setEnabled(True)
+
+        # 按钮区
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        # 整体布局
+        layout = QVBoxLayout()
+        layout.addWidget(format_label)
+        layout.addWidget(self.format_combo)
+        layout.addWidget(file_label)
+        layout.addLayout(file_layout)
+        layout.addWidget(quality_label)
+        layout.addWidget(self.quality_spin)
+        layout.addWidget(buttons)
+        self.setLayout(layout)
+
+    def on_format_changed(self, fmt):
+        self.selected_format = fmt
+        if fmt == "PNG":
+            self.quality_spin.setEnabled(False)
+            path = self.file_line_edit.text()
+            base, _ = os.path.splitext(path)
+            self.file_line_edit.setText(base + ".png")
+        else:
+            self.quality_spin.setEnabled(True)
+            path = self.file_line_edit.text()
+            base, _ = os.path.splitext(path)
+            self.file_line_edit.setText(base + ".jpg")
+
+    def browse_file(self):
+        if self.selected_format == "JPEG":
+            filter_str = "JPEG (*.jpg *.jpeg)"
+        else:
+            filter_str = "PNG (*.png)"
+        path, _ = QFileDialog.getSaveFileName(self, "选择输出文件", self.file_line_edit.text(), filter_str)
+        if path:
+            self.file_line_edit.setText(path)
+
+    def get_settings(self):
+        return {
+            "format": self.selected_format,
+            "output_path": self.file_line_edit.text(),
+            "quality": self.quality_spin.value()
+        }
+
 class WatermarkApp(QMainWindow):
     """
-    界面类，负责采集用户输入并调用 WatermarkProcessor 处理图像，
-    同时展示处理后的图像。
+    界面类，负责采集用户输入并调用 WatermarkProcessor 处理图像，同时展示处理后的图像。
     """
     def __init__(self):
         super().__init__()
@@ -127,13 +231,11 @@ class WatermarkApp(QMainWindow):
 
     def initUI(self):
         main_layout = QHBoxLayout()
-
         control_layout = QVBoxLayout()
         control_container = QWidget()
         control_container.setLayout(control_layout)
         control_container.setFixedWidth(int(self.width() * 0.3))
 
-        # 辅助函数，用于生成标签和输入框组合
         def add_labeled_input(label_text, input_widget, default_value=None):
             layout = QHBoxLayout()
             label = QLabel(label_text)
@@ -144,7 +246,6 @@ class WatermarkApp(QMainWindow):
             layout.addWidget(input_widget)
             control_layout.addLayout(layout)
 
-        # 加载图片按钮
         self.load_btn = QPushButton('加载图片')
         self.load_btn.clicked.connect(self.load_images)
         control_layout.addWidget(self.load_btn)
@@ -191,6 +292,18 @@ class WatermarkApp(QMainWindow):
         self.spacing_input.textChanged.connect(self.update_watermark)
         add_labeled_input("文字和图片间隔 (px)", self.spacing_input)
 
+        # 新增复选框：是否添加阴影
+        self.shadow_checkbox = QCheckBox("添加阴影")
+        self.shadow_checkbox.stateChanged.connect(self.update_watermark)
+        control_layout.addWidget(self.shadow_checkbox)
+
+        # 新增输入框：阴影宽度（高斯模糊半径）
+        self.shadow_width_input = QLineEdit(self)
+        self.shadow_width_input.setValidator(QIntValidator(0, 100))
+        self.shadow_width_input.setText("5")
+        self.shadow_width_input.textChanged.connect(self.update_watermark)
+        add_labeled_input("阴影宽度 (px)", self.shadow_width_input)
+
         # 图片水印相关输入
         self.load_watermark_btn = QPushButton('加载图片水印')
         self.load_watermark_btn.clicked.connect(self.load_watermark_image)
@@ -214,6 +327,11 @@ class WatermarkApp(QMainWindow):
         self.watermark_opacity_input.textChanged.connect(self.update_watermark)
         add_labeled_input("图片水印透明度 (%)", self.watermark_opacity_input)
 
+        # 输出图片按钮
+        self.export_btn = QPushButton("输出图片")
+        self.export_btn.clicked.connect(self.export_image)
+        control_layout.addWidget(self.export_btn)
+
         # 图像显示区域
         self.graphics_view = QGraphicsView(self)
         self.graphics_scene = QGraphicsScene()
@@ -228,7 +346,6 @@ class WatermarkApp(QMainWindow):
         container.setLayout(main_layout)
         self.setCentralWidget(container)
 
-        # 图像预览设置
         self.graphics_view.setDragMode(QGraphicsView.ScrollHandDrag)
         self.graphics_view.setRenderHint(QPainter.Antialiasing)
         self.graphics_view.setRenderHint(QPainter.SmoothPixmapTransform)
@@ -249,7 +366,6 @@ class WatermarkApp(QMainWindow):
     def load_image(self, path):
         if os.path.exists(path):
             image = Image.open(path)
-            # 将 PIL 图像转换为 OpenCV BGR 格式
             self.original_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
             self.processor = WatermarkProcessor(self.original_image, self.font_path)
             self.update_watermark()
@@ -267,7 +383,6 @@ class WatermarkApp(QMainWindow):
 
     def show_image(self, pil_image):
         if pil_image is not None:
-            # 将 PIL 图像转换为 QPixmap 显示
             image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGBA2RGB)
             h, w, ch = image.shape
             bytes_per_line = ch * w
@@ -279,23 +394,23 @@ class WatermarkApp(QMainWindow):
     def update_watermark(self):
         if self.original_image is None or not self.processor:
             return
-        # 收集文本水印参数
         text = self.text_input.text()
         text_params = {
             "font_size": int(self.font_size_input.text()),
             "position": self.position_combo.currentText(),
             "opacity": int(self.opacity_input.text()),
             "offset_x": int(self.offset_x_input.text()),
-            "offset_y": int(self.offset_y_input.text())
+            "offset_y": int(self.offset_y_input.text()),
+            "shadow": self.shadow_checkbox.isChecked(),
+            "shadow_width": int(self.shadow_width_input.text() or "0")
+
         }
-        # 收集图片水印参数
         image_params = {
             "position": self.watermark_position_combo.currentText(),
             "size": int(self.watermark_size_input.text()),
             "opacity": int(self.watermark_opacity_input.text()),
             "spacing": int(self.spacing_input.text())
         }
-        # 调用处理逻辑，获取水印处理后的图像
         final_image = self.processor.process(
             text,
             text_params,
@@ -303,6 +418,53 @@ class WatermarkApp(QMainWindow):
             image_params=image_params if self.watermark_image else None
         )
         self.show_image(final_image)
+
+    def export_image(self):
+        if self.original_image is None or not self.processor:
+            return
+
+        default_output = "example_waterMarked.jpg"
+        if self.image_paths:
+            base_name = os.path.basename(self.image_paths[0])
+            name, ext = os.path.splitext(base_name)
+            default_output = os.path.join(os.path.dirname(self.image_paths[0]), name + "_waterMarked" + ext)
+        dialog = ExportDialog(default_output, self)
+        if dialog.exec_() == QDialog.Accepted:
+            settings = dialog.get_settings()
+            fmt = settings["format"]
+            output_path = settings["output_path"]
+            quality = settings["quality"]
+
+            text = self.text_input.text()
+            text_params = {
+                "font_size": int(self.font_size_input.text()),
+                "position": self.position_combo.currentText(),
+                "opacity": int(self.opacity_input.text()),
+                "offset_x": int(self.offset_x_input.text()),
+                "offset_y": int(self.offset_y_input.text()),
+                "shadow": self.shadow_checkbox.isChecked(),
+                "shadow_width": int(self.shadow_width_input.text())
+            }
+            image_params = {
+                "position": self.watermark_position_combo.currentText(),
+                "size": int(self.watermark_size_input.text()),
+                "opacity": int(self.watermark_opacity_input.text()),
+                "spacing": int(self.spacing_input.text())
+            }
+            final_image = self.processor.process(
+                text,
+                text_params,
+                image_watermark=self.watermark_image,
+                image_params=image_params if self.watermark_image else None
+            )
+
+            try:
+                if fmt == "JPEG":
+                    final_image.convert('RGB').save(output_path, "JPEG", quality=quality)
+                else:
+                    final_image.save(output_path, "PNG")
+            except Exception as e:
+                print("保存失败:", e)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
