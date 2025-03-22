@@ -19,10 +19,12 @@ class WatermarkProcessor:
         self.original_image = original_image
         self.font_path = font_path
 
-    def apply_text_watermark(self, image, text, font_size, position, opacity, offset_x, offset_y, shadow=False, shadow_width=0):
+    def apply_text_watermark(self, image, text, font_size, position, opacity, offset_x, offset_y, 
+                             shadow=False, shadow_width=0, shadow_intensity=50):
         """
         在传入的 PIL 图像上添加文本水印，返回叠加图层、文本位置及文本尺寸。
-        如果 shadow 为 True，则在文字四周添加渐变阴影（只出现在文字外部），阴影模糊半径由 shadow_width 指定，
+        如果 shadow 为 True，则在文字四周添加渐变阴影（只出现在文字外部），
+        阴影模糊半径由 shadow_width 指定，阴影浓淡由 shadow_intensity 决定（百分比），
         阴影不会覆盖文字本身。
         """
         overlay = Image.new('RGBA', image.size, (255, 255, 255, 0))
@@ -48,8 +50,8 @@ class WatermarkProcessor:
             blurred = mask.filter(ImageFilter.GaussianBlur(radius=shadow_width))
             # 得到仅在文字外部的阴影区域（将原始文字mask减去）
             shadow_mask = ImageChops.subtract(blurred, mask)
-            # 调整阴影透明度（阴影透明度为文字透明度的一半）
-            desired_shadow_alpha = int(opacity * 0.5)
+            # 使用用户设置的阴影浓淡（shadow_intensity 0~100）
+            desired_shadow_alpha = int(opacity * shadow_intensity / 100)
             shadow_mask = shadow_mask.point(lambda p: p * (desired_shadow_alpha / 255.0))
             # 生成阴影层（填充黑色）
             shadow_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
@@ -112,7 +114,8 @@ class WatermarkProcessor:
             text_params.get("offset_x", 120),
             text_params.get("offset_y", 120),
             shadow=text_params.get("shadow", False),
-            shadow_width=text_params.get("shadow_width", 0)
+            shadow_width=text_params.get("shadow_width", 0),
+            shadow_intensity=text_params.get("shadow_intensity", 50)
         )
         overlay = Image.alpha_composite(overlay, text_overlay)
         # 如果有图片水印，则添加
@@ -304,6 +307,13 @@ class WatermarkApp(QMainWindow):
         self.shadow_width_input.textChanged.connect(self.update_watermark)
         add_labeled_input("阴影宽度 (px)", self.shadow_width_input)
 
+        # 新增输入框：阴影浓淡 (%)，默认50%
+        self.shadow_intensity_input = QLineEdit(self)
+        self.shadow_intensity_input.setValidator(QIntValidator(0, 100))
+        self.shadow_intensity_input.setText("50")
+        self.shadow_intensity_input.textChanged.connect(self.update_watermark)
+        add_labeled_input("阴影浓淡 (%)", self.shadow_intensity_input)
+
         # 图片水印相关输入
         self.load_watermark_btn = QPushButton('加载图片水印')
         self.load_watermark_btn.clicked.connect(self.load_watermark_image)
@@ -402,8 +412,8 @@ class WatermarkApp(QMainWindow):
             "offset_x": int(self.offset_x_input.text()),
             "offset_y": int(self.offset_y_input.text()),
             "shadow": self.shadow_checkbox.isChecked(),
-            "shadow_width": int(self.shadow_width_input.text() or "0")
-
+            "shadow_width": int(self.shadow_width_input.text() or "0"),
+            "shadow_intensity": int(self.shadow_intensity_input.text() or "50")
         }
         image_params = {
             "position": self.watermark_position_combo.currentText(),
@@ -443,7 +453,8 @@ class WatermarkApp(QMainWindow):
                 "offset_x": int(self.offset_x_input.text()),
                 "offset_y": int(self.offset_y_input.text()),
                 "shadow": self.shadow_checkbox.isChecked(),
-                "shadow_width": int(self.shadow_width_input.text())
+                "shadow_width": int(self.shadow_width_input.text()),
+                "shadow_intensity": int(self.shadow_intensity_input.text() or "50")
             }
             image_params = {
                 "position": self.watermark_position_combo.currentText(),
