@@ -199,25 +199,41 @@ class WatermarkProcessor:
         return overlay, text_pos, (text_width, text_height)
 
     def apply_image_watermark(self, overlay, watermark_image, text_position, text_size, image_params):
-        """
-        在叠加图层上添加图片水印，水印相对于文本水印的位置进行定位。
-        """
-        wm_scale = image_params.get("size", 40) / 100.0
+        # 1. 解析用户输入
+        size_percent = image_params.get("size", 10)  # 1~100
         wm_opacity = int(image_params.get("opacity", 80)) * 255 // 100
         spacing = image_params.get("spacing", 5)
         watermark_pos = image_params.get("position", "上")
 
-        wm_resized = watermark_image.resize(
-            (int(watermark_image.width * wm_scale), int(watermark_image.height * wm_scale)),
-            Image.Resampling.LANCZOS
-        ).convert('RGBA')
+        # 2. 计算目标尺寸
+        bg_width, bg_height = overlay.size
+        short_side = min(bg_width, bg_height)
 
-        # 调整水印透明度
+        # 让“水印的短边 = 背景图短边 * size_percent%”
+        wm_short_side_target = short_side * (size_percent / 100.0)
+
+        # 原始水印尺寸
+        wm_original_w = watermark_image.width
+        wm_original_h = watermark_image.height
+        wm_original_short_side = min(wm_original_w, wm_original_h)
+
+        # 缩放比
+        scale = wm_short_side_target / float(wm_original_short_side)
+
+        # 算出最终缩放后的宽高
+        new_w = int(wm_original_w * scale)
+        new_h = int(wm_original_h * scale)
+
+        # 3. 进行缩放
+        wm_resized = watermark_image.resize((new_w, new_h), Image.Resampling.LANCZOS).convert('RGBA')
+
+        # 4. 调整水印透明度
         alpha = wm_resized.split()[3]
         alpha = Image.eval(alpha, lambda a: wm_opacity * a // 255)
         wm_resized.putalpha(alpha)
         wm_w, wm_h = wm_resized.size
 
+        # 5. 计算粘贴位置(保持你原先的逻辑不变)
         text_x, text_y = text_position
         text_width, text_height = text_size
 
@@ -231,32 +247,47 @@ class WatermarkProcessor:
         overlay.paste(wm_resized, wm_pos, wm_resized)
         return overlay
 
+
     def process(self, text, text_params, image_watermark=None, image_params=None):
-        """
-        根据传入的参数在原图上添加文本和（可选的）图片水印，
-        返回处理后的 PIL 图像。
-        """
         base_image = Image.fromarray(cv2.cvtColor(self.original_image, cv2.COLOR_BGR2RGB)).convert('RGBA')
         overlay = Image.new('RGBA', base_image.size, (255, 255, 255, 0))
-        # 文本水印参数（opacity由百分比转换为0-255）
+
+        # 获取背景图大小
+        bg_width, bg_height = base_image.size
+        short_side = min(bg_width, bg_height)
+
+        # --- 将字体大小从“百分比”转成“像素” ---
+        # 用户输入的 text_params["font_size"] 为 1~100
+        font_size_percent = text_params.get("font_size", 10)  # 默认10%
+        font_size_px = int(short_side * (font_size_percent / 100.0))
+
+        # 将换算后的 px 大小替换掉原本 text_params["font_size"]
+        # 让后面的 apply_text_watermark 正常使用像素单位
+        text_params_px = text_params.copy()
+        text_params_px["font_size"] = font_size_px
+
+        # 调用 apply_text_watermark
         text_overlay, text_pos, text_size = self.apply_text_watermark(
             base_image,
             text,
-            text_params.get("font_size", 220),
-            text_params.get("position", "右下角"),
-            int(text_params.get("opacity", 50)) * 255 // 100,
-            text_params.get("offset_x", 120),
-            text_params.get("offset_y", 120),
-            shadow=text_params.get("shadow", False),
-            shadow_width=text_params.get("shadow_width", 0),
-            shadow_intensity=text_params.get("shadow_intensity", 50)
+            text_params_px["font_size"],
+            text_params_px.get("position", "右下角"),
+            int(text_params_px.get("opacity", 50)) * 255 // 100,
+            text_params_px.get("offset_x", 120),
+            text_params_px.get("offset_y", 120),
+            shadow=text_params_px.get("shadow", False),
+            shadow_width=text_params_px.get("shadow_width", 0),
+            shadow_intensity=text_params_px.get("shadow_intensity", 50)
         )
         overlay = Image.alpha_composite(overlay, text_overlay)
+
         # 如果有图片水印，则添加
         if image_watermark and image_params:
             overlay = self.apply_image_watermark(overlay, image_watermark, text_pos, text_size, image_params)
+
         final_image = Image.alpha_composite(base_image, overlay)
         return final_image
+
 
 def get_chinese_font():
     """
@@ -467,10 +498,10 @@ class WatermarkApp(QMainWindow):
         add_labeled_input("透明度 (%)", self.opacity_input)
 
         self.font_size_input = QLineEdit(self)
-        self.font_size_input.setValidator(QIntValidator(10, 500))
-        self.font_size_input.setText("220")
+        self.font_size_input.setValidator(QIntValidator(1, 100))  # 允许用户输入 1~100
+        self.font_size_input.setText("10")                       # 默认值 10
         self.font_size_input.textChanged.connect(self.update_watermark)
-        add_labeled_input("字体大小", self.font_size_input)
+        add_labeled_input("字体大小(占背景图短边%)", self.font_size_input, "10")
         
         # 新增“选择字体”按钮（位于文本水印相关控件下方）
         self.font_select_btn = QPushButton("选择字体")
@@ -526,10 +557,10 @@ class WatermarkApp(QMainWindow):
         add_labeled_input("图片水印位置", self.watermark_position_combo)
 
         self.watermark_size_input = QLineEdit(self)
-        self.watermark_size_input.setValidator(QIntValidator(10, 200))
-        self.watermark_size_input.setText("40")
+        self.watermark_size_input.setValidator(QIntValidator(1, 100))  # 允许用户输入 1~100
+        self.watermark_size_input.setText("10")                        # 默认值 10
         self.watermark_size_input.textChanged.connect(self.update_watermark)
-        add_labeled_input("图片水印大小 (%)", self.watermark_size_input)
+        add_labeled_input("图片水印大小(占背景图短边%)", self.watermark_size_input, "10")
 
         self.watermark_opacity_input = QLineEdit(self)
         self.watermark_opacity_input.setValidator(QIntValidator(0, 100))
