@@ -10,6 +10,75 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QFileDialog, QLabel, QPu
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QIntValidator, QFont, QFontDatabase
 from PyQt5.QtCore import Qt
 
+class BatchExportDialog(QDialog):
+    """
+    自定义对话框，允许用户选择批量输出的文件夹、输出格式和（针对 JPEG）压缩质量。
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("批量输出设置")
+        self.selected_format = "JPEG"
+        self.output_folder = ""
+        self.jpeg_quality = 95
+
+        # 输出格式选择
+        format_label = QLabel("输出格式:")
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["JPEG", "PNG"])
+        self.format_combo.currentTextChanged.connect(self.on_format_changed)
+
+        # 输出文件夹选择
+        folder_label = QLabel("输出文件夹:")
+        self.folder_line_edit = QLineEdit()
+        browse_btn = QPushButton("浏览")
+        browse_btn.clicked.connect(self.browse_folder)
+
+        folder_layout = QHBoxLayout()
+        folder_layout.addWidget(self.folder_line_edit)
+        folder_layout.addWidget(browse_btn)
+
+        # JPEG质量设置
+        quality_label = QLabel("JPEG质量:")
+        self.quality_spin = QSpinBox()
+        self.quality_spin.setRange(1, 100)
+        self.quality_spin.setValue(95)
+        self.quality_spin.setEnabled(True)
+
+        # 对话框按钮
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        layout.addWidget(format_label)
+        layout.addWidget(self.format_combo)
+        layout.addWidget(folder_label)
+        layout.addLayout(folder_layout)
+        layout.addWidget(quality_label)
+        layout.addWidget(self.quality_spin)
+        layout.addWidget(buttons)
+        self.setLayout(layout)
+
+    def on_format_changed(self, fmt):
+        self.selected_format = fmt
+        # 如果选择PNG，则禁用JPEG质量设置
+        if fmt == "PNG":
+            self.quality_spin.setEnabled(False)
+        else:
+            self.quality_spin.setEnabled(True)
+
+    def browse_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "选择输出文件夹", "")
+        if folder:
+            self.folder_line_edit.setText(folder)
+
+    def get_settings(self):
+        return {
+            "format": self.selected_format,
+            "output_folder": self.folder_line_edit.text(),
+            "quality": self.quality_spin.value()
+        }
+    
 class FontListDialog(QDialog):
     """
     扫描 C:/Windows/Fonts 下的常见字体文件，并以列表形式显示。
@@ -296,7 +365,68 @@ class WatermarkApp(QMainWindow):
         self.font_path = get_chinese_font()
         self.processor = None  # 图片加载后初始化
         self.initUI()
+    def batch_export_images(self):
+        # 如果没有加载图片则直接返回
+        if not self.image_paths:
+            return
 
+        # 弹出批量输出设置对话框
+        dialog = BatchExportDialog(self)
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        settings = dialog.get_settings()
+        out_folder = settings["output_folder"]
+        if not out_folder:
+            return  # 未选择输出文件夹
+
+        fmt = settings["format"]
+        quality = settings["quality"]
+
+        # 从当前界面获取水印参数（以第一张图片的设置为准）
+        text = self.text_input.text()
+        text_params = {
+            "font_size": int(self.font_size_input.text()),
+            "position": self.position_combo.currentText(),
+            "opacity": int(self.opacity_input.text()),
+            "offset_x": int(self.offset_x_input.text()),
+            "offset_y": int(self.offset_y_input.text()),
+            "shadow": self.shadow_checkbox.isChecked(),
+            "shadow_width": int(self.shadow_width_input.text() or "0"),
+            "shadow_intensity": int(self.shadow_intensity_input.text() or "50")
+        }
+        image_params = {
+            "position": self.watermark_position_combo.currentText(),
+            "size": int(self.watermark_size_input.text()),
+            "opacity": int(self.watermark_opacity_input.text()),
+            "spacing": int(self.spacing_input.text())
+        }
+
+        # 批量处理每张图片
+        for img_path in self.image_paths:
+            pil_img = Image.open(img_path)
+            original_image = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+            processor = WatermarkProcessor(original_image, self.font_path)
+            final_image = processor.process(
+                text,
+                text_params,
+                image_watermark=self.watermark_image,
+                image_params=image_params if self.watermark_image else None
+            )
+
+            # 保持原文件名，生成输出路径
+            filename = os.path.basename(img_path)
+            out_path = os.path.join(out_folder, filename)
+
+            # 根据原文件扩展名和选定格式来保存
+            _, ext = os.path.splitext(filename)
+            ext_lower = ext.lower()
+            if fmt == "JPEG" or ext_lower in [".jpg", ".jpeg"]:
+                final_image.convert("RGB").save(out_path, "JPEG", quality=quality)
+            else:
+                final_image.save(out_path, "PNG")
+
+        print(f"批量输出完成，共处理 {len(self.image_paths)} 张图片，输出到：{out_folder}")
+        
     # 在 WatermarkApp 类的 initUI 方法中，添加“选择字体”按钮
     def initUI(self):
         main_layout = QHBoxLayout()
@@ -304,7 +434,6 @@ class WatermarkApp(QMainWindow):
         control_container = QWidget()
         control_container.setLayout(control_layout)
         control_container.setFixedWidth(int(self.width() * 0.3))
-
         def add_labeled_input(label_text, input_widget, default_value=None):
             layout = QHBoxLayout()
             label = QLabel(label_text)
@@ -412,6 +541,11 @@ class WatermarkApp(QMainWindow):
         self.export_btn = QPushButton("输出图片")
         self.export_btn.clicked.connect(self.export_image)
         control_layout.addWidget(self.export_btn)
+
+        # 新增“批量输出”按钮
+        self.batch_export_btn = QPushButton("批量输出")
+        self.batch_export_btn.clicked.connect(self.batch_export_images)
+        control_layout.addWidget(self.batch_export_btn)
 
         # 图像显示区域设置（保持不变）
         self.graphics_view = QGraphicsView(self)
