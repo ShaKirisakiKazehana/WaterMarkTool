@@ -6,10 +6,75 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QFileDialog, QLabel, QPushButton,
                              QVBoxLayout, QHBoxLayout, QWidget, QLineEdit, QComboBox,
                              QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QDialog,
-                             QDialogButtonBox, QSpinBox, QCheckBox)
-from PyQt5.QtGui import QPixmap, QImage, QPainter, QIntValidator
+                             QDialogButtonBox, QSpinBox, QCheckBox, QListWidget, QListWidgetItem)
+from PyQt5.QtGui import QPixmap, QImage, QPainter, QIntValidator, QFont, QFontDatabase
 from PyQt5.QtCore import Qt
 
+class FontListDialog(QDialog):
+    """
+    扫描 C:/Windows/Fonts 下的常见字体文件，并以列表形式显示。
+    列表项中展示的是字体预览效果（示例文字），而非文件名，
+    用户可从中选择某个字体文件，点击“确定”后返回该字体文件的完整路径。
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("选择字体")
+        self.resize(400, 600)
+
+        # 列表控件
+        self.list_widget = QListWidget()
+        self.load_fonts()
+
+        # 对话框按钮（确定 / 取消）
+        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+
+        # 布局
+        layout = QVBoxLayout()
+        layout.addWidget(self.list_widget)
+        layout.addWidget(self.button_box)
+        self.setLayout(layout)
+
+    def load_fonts(self):
+        """
+        扫描 C:/Windows/Fonts 文件夹中的 .ttf、.ttc、.otf 文件，
+        使用 QFontDatabase 获取字体族名称，并将带有字体预览的项加入列表。
+        """
+        font_dir = r"C:\Windows\Fonts"
+        exts = [".ttf", ".ttc", ".otf"]
+        if os.path.exists(font_dir):
+            for file in os.listdir(font_dir):
+                lower_file = file.lower()
+                if any(lower_file.endswith(ext) for ext in exts):
+                    full_path = os.path.join(font_dir, file)
+                    # 加载字体文件
+                    font_id = QFontDatabase.addApplicationFont(full_path)
+                    families = QFontDatabase.applicationFontFamilies(font_id)
+                    if families:
+                        family = families[0]
+                        # 使用字体族名称作为示例文字，同时展示预览效果
+                        sample_text = f"{family} - 示例文字"
+                        item_font = QFont(family, 14)
+                    else:
+                        # 若无法加载字体，则退化为显示文件名
+                        sample_text = file
+                        item_font = QFont()
+                    item = QListWidgetItem(sample_text)
+                    item.setFont(item_font)
+                    # 将完整路径存储在 Item 的 UserRole 数据中
+                    item.setData(Qt.UserRole, full_path)
+                    self.list_widget.addItem(item)
+
+    def get_selected_font_path(self):
+        """
+        返回用户选择的字体文件完整路径；若无选择则返回 None。
+        """
+        item = self.list_widget.currentItem()
+        if item:
+            return item.data(Qt.UserRole)
+        return None
+    
 class WatermarkProcessor:
     """
     负责图像水印处理，将文本和图片水印应用到原图上。
@@ -232,6 +297,7 @@ class WatermarkApp(QMainWindow):
         self.processor = None  # 图片加载后初始化
         self.initUI()
 
+    # 在 WatermarkApp 类的 initUI 方法中，添加“选择字体”按钮
     def initUI(self):
         main_layout = QHBoxLayout()
         control_layout = QVBoxLayout()
@@ -276,6 +342,11 @@ class WatermarkApp(QMainWindow):
         self.font_size_input.setText("220")
         self.font_size_input.textChanged.connect(self.update_watermark)
         add_labeled_input("字体大小", self.font_size_input)
+        
+        # 新增“选择字体”按钮（位于文本水印相关控件下方）
+        self.font_select_btn = QPushButton("选择字体")
+        self.font_select_btn.clicked.connect(self.select_font)
+        control_layout.addWidget(self.font_select_btn)
 
         self.offset_x_input = QLineEdit(self)
         self.offset_x_input.setValidator(QIntValidator(0, 1000))
@@ -314,7 +385,7 @@ class WatermarkApp(QMainWindow):
         self.shadow_intensity_input.textChanged.connect(self.update_watermark)
         add_labeled_input("阴影浓淡 (%)", self.shadow_intensity_input)
 
-        # 图片水印相关输入
+        # 图片水印相关输入（以下部分保持不变）
         self.load_watermark_btn = QPushButton('加载图片水印')
         self.load_watermark_btn.clicked.connect(self.load_watermark_image)
         control_layout.addWidget(self.load_watermark_btn)
@@ -342,7 +413,7 @@ class WatermarkApp(QMainWindow):
         self.export_btn.clicked.connect(self.export_image)
         control_layout.addWidget(self.export_btn)
 
-        # 图像显示区域
+        # 图像显示区域设置（保持不变）
         self.graphics_view = QGraphicsView(self)
         self.graphics_scene = QGraphicsScene()
         self.graphics_view.setScene(self.graphics_scene)
@@ -361,6 +432,19 @@ class WatermarkApp(QMainWindow):
         self.graphics_view.setRenderHint(QPainter.SmoothPixmapTransform)
         self.graphics_view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.graphics_view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+
+    def select_font(self):
+        dialog = FontListDialog(self)  # 创建并弹出自定义对话框
+        if dialog.exec_() == QDialog.Accepted:
+            selected_font_path = dialog.get_selected_font_path()
+            if selected_font_path:
+                self.font_path = selected_font_path
+                # 更新 WatermarkProcessor 中的字体路径
+                if self.processor:
+                    self.processor.font_path = self.font_path
+                self.update_watermark()
+
+
 
     def wheelEvent(self, event):
         factor = 1.2 if event.angleDelta().y() > 0 else 0.8
@@ -476,7 +560,7 @@ class WatermarkApp(QMainWindow):
                     final_image.save(output_path, "PNG")
             except Exception as e:
                 print("保存失败:", e)
-
+    
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = WatermarkApp()
