@@ -497,11 +497,20 @@ class WatermarkApp(QMainWindow):
         self.opacity_input.textChanged.connect(self.update_watermark)
         add_labeled_input("透明度 (%)", self.opacity_input)
 
-        self.font_size_input = QLineEdit(self)
-        self.font_size_input.setValidator(QIntValidator(1, 100))  # 允许用户输入 1~100
-        self.font_size_input.setText("10")                       # 默认值 10
-        self.font_size_input.textChanged.connect(self.update_watermark)
-        add_labeled_input("字体大小(占背景图短边%)", self.font_size_input, "10")
+        self.font_size_input = QSpinBox(self)
+        self.font_size_input.setRange(1, 100)  # 范围 1~100
+        self.font_size_input.setValue(10)      # 默认 10
+        self.font_size_input.valueChanged.connect(self.update_watermark)
+
+        # 如果你想用同样的 add_labeled_input 函数，就把 input_widget 换成 self.font_size_input 即可。
+        # 假设你不想改 add_labeled_input 逻辑，就简单改成如下：
+        layout = QHBoxLayout()
+        label = QLabel("字体大小(%)")
+        label.setFixedWidth(120)
+        layout.addWidget(label)
+        layout.addWidget(self.font_size_input)
+        control_layout.addLayout(layout)
+
         
         # 新增“选择字体”按钮（位于文本水印相关控件下方）
         self.font_select_btn = QPushButton("选择字体")
@@ -524,7 +533,7 @@ class WatermarkApp(QMainWindow):
         self.spacing_input.setValidator(QIntValidator(0, 100))
         self.spacing_input.setText("5")
         self.spacing_input.textChanged.connect(self.update_watermark)
-        add_labeled_input("文字和图片间隔 (px)", self.spacing_input)
+        add_labeled_input("文字和图片间隔", self.spacing_input)
 
         # 新增复选框：是否添加阴影
         self.shadow_checkbox = QCheckBox("添加阴影")
@@ -534,14 +543,14 @@ class WatermarkApp(QMainWindow):
         # 新增输入框：阴影宽度（高斯模糊半径）
         self.shadow_width_input = QLineEdit(self)
         self.shadow_width_input.setValidator(QIntValidator(0, 100))
-        self.shadow_width_input.setText("5")
+        self.shadow_width_input.setText("15")
         self.shadow_width_input.textChanged.connect(self.update_watermark)
         add_labeled_input("阴影宽度 (px)", self.shadow_width_input)
 
         # 新增输入框：阴影浓淡 (%)，默认50%
         self.shadow_intensity_input = QLineEdit(self)
         self.shadow_intensity_input.setValidator(QIntValidator(0, 100))
-        self.shadow_intensity_input.setText("50")
+        self.shadow_intensity_input.setText("80")
         self.shadow_intensity_input.textChanged.connect(self.update_watermark)
         add_labeled_input("阴影浓淡 (%)", self.shadow_intensity_input)
 
@@ -556,17 +565,23 @@ class WatermarkApp(QMainWindow):
         self.watermark_position_combo.currentIndexChanged.connect(self.update_watermark)
         add_labeled_input("图片水印位置", self.watermark_position_combo)
 
-        self.watermark_size_input = QLineEdit(self)
-        self.watermark_size_input.setValidator(QIntValidator(1, 100))  # 允许用户输入 1~100
-        self.watermark_size_input.setText("10")                        # 默认值 10
-        self.watermark_size_input.textChanged.connect(self.update_watermark)
-        add_labeled_input("图片水印大小(占背景图短边%)", self.watermark_size_input, "10")
+        self.watermark_size_input = QSpinBox(self)
+        self.watermark_size_input.setRange(1, 100)
+        self.watermark_size_input.setValue(10)
+        self.watermark_size_input.valueChanged.connect(self.update_watermark)
+
+        layout = QHBoxLayout()
+        label = QLabel("图片大小(%)")
+        label.setFixedWidth(120)
+        layout.addWidget(label)
+        layout.addWidget(self.watermark_size_input)
+        control_layout.addLayout(layout)
 
         self.watermark_opacity_input = QLineEdit(self)
         self.watermark_opacity_input.setValidator(QIntValidator(0, 100))
         self.watermark_opacity_input.setText("80")
         self.watermark_opacity_input.textChanged.connect(self.update_watermark)
-        add_labeled_input("图片水印透明度 (%)", self.watermark_opacity_input)
+        add_labeled_input("图片透明度 (%)", self.watermark_opacity_input)
 
         # 输出图片按钮
         self.export_btn = QPushButton("输出图片")
