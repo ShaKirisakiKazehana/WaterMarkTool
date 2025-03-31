@@ -416,20 +416,20 @@ class WatermarkApp(QMainWindow):
         # 从当前界面获取水印参数（以第一张图片的设置为准）
         text = self.text_input.text()
         text_params = {
-            "font_size": int(self.font_size_input.text()),
+            "font_size": int(self.font_size_input.text() or "1"),
             "position": self.position_combo.currentText(),
-            "opacity": int(self.opacity_input.text()),
-            "offset_x": int(self.offset_x_input.text()),
-            "offset_y": int(self.offset_y_input.text()),
+            "opacity": int(self.opacity_input.text() or "0"),
+            "offset_x": int(self.offset_x_input.text() or "0"),#这里
+            "offset_y": int(self.offset_y_input.text() or "0"),#这里
             "shadow": self.shadow_checkbox.isChecked(),
             "shadow_width": int(self.shadow_width_input.text() or "0"),
             "shadow_intensity": int(self.shadow_intensity_input.text() or "50")
         }
         image_params = {
             "position": self.watermark_position_combo.currentText(),
-            "size": int(self.watermark_size_input.text()),
-            "opacity": int(self.watermark_opacity_input.text()),
-            "spacing": int(self.spacing_input.text())
+            "size": int(self.watermark_size_input.text() or "0"),
+            "opacity": int(self.watermark_opacity_input.text() or "0"),
+            "spacing": int(self.spacing_input.text() or "0")
         }
 
         # 批量处理每张图片
@@ -481,7 +481,7 @@ class WatermarkApp(QMainWindow):
 
         # 文本水印相关输入
         self.text_input = QLineEdit(self)
-        self.text_input.setText("测试")
+        self.text_input.setText("")
         self.text_input.textChanged.connect(self.update_watermark)
         add_labeled_input("水印文本", self.text_input)
 
@@ -670,20 +670,20 @@ class WatermarkApp(QMainWindow):
             return
         text = self.text_input.text()
         text_params = {
-            "font_size": int(self.font_size_input.text()),
+            "font_size": int(self.font_size_input.text() or "1"),
             "position": self.position_combo.currentText(),
-            "opacity": int(self.opacity_input.text()),
-            "offset_x": int(self.offset_x_input.text()),
-            "offset_y": int(self.offset_y_input.text()),
+            "opacity": int(self.opacity_input.text() or "1"),
+            "offset_x": int(self.offset_x_input.text() or "0"),
+            "offset_y": int(self.offset_y_input.text() or "0"),
             "shadow": self.shadow_checkbox.isChecked(),
             "shadow_width": int(self.shadow_width_input.text() or "0"),
             "shadow_intensity": int(self.shadow_intensity_input.text() or "50")
         }
         image_params = {
             "position": self.watermark_position_combo.currentText(),
-            "size": int(self.watermark_size_input.text()),
-            "opacity": int(self.watermark_opacity_input.text()),
-            "spacing": int(self.spacing_input.text())
+            "size": int(self.watermark_size_input.text() or "1"),
+            "opacity": int(self.watermark_opacity_input.text() or "0"),
+            "spacing": int(self.spacing_input.text() or "0")
         }
         final_image = self.processor.process(
             text,
@@ -711,20 +711,20 @@ class WatermarkApp(QMainWindow):
 
             text = self.text_input.text()
             text_params = {
-                "font_size": int(self.font_size_input.text()),
+                "font_size": int(self.font_size_input.text() or "1"),
                 "position": self.position_combo.currentText(),
-                "opacity": int(self.opacity_input.text()),
-                "offset_x": int(self.offset_x_input.text()),
-                "offset_y": int(self.offset_y_input.text()),
+                "opacity": int(self.opacity_input.text() or "1"),
+                "offset_x": int(self.offset_x_input.text() or "0"),
+                "offset_y": int(self.offset_y_input.text() or "0"),
                 "shadow": self.shadow_checkbox.isChecked(),
-                "shadow_width": int(self.shadow_width_input.text()),
+                "shadow_width": int(self.shadow_width_input.text() or "15"),
                 "shadow_intensity": int(self.shadow_intensity_input.text() or "50")
             }
             image_params = {
                 "position": self.watermark_position_combo.currentText(),
-                "size": int(self.watermark_size_input.text()),
-                "opacity": int(self.watermark_opacity_input.text()),
-                "spacing": int(self.spacing_input.text())
+                "size": int(self.watermark_size_input.text() or "1"),
+                "opacity": int(self.watermark_opacity_input.text() or "0"),
+                "spacing": int(self.spacing_input.text() or "0")
             }
             final_image = self.processor.process(
                 text,
