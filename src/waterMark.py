@@ -444,14 +444,13 @@ class WatermarkApp(QMainWindow):
                 image_params=image_params if self.watermark_image else None
             )
 
-            # 保持原文件名，生成输出路径
-            filename = os.path.basename(img_path)
-            out_path = os.path.join(out_folder, filename)
+            # 修改这里：根据选择的格式生成新的扩展名
+            base_name, _ = os.path.splitext(os.path.basename(img_path))
+            new_ext = ".jpg" if fmt == "JPEG" else ".png"
+            out_path = os.path.join(out_folder, base_name + new_ext)
 
-            # 根据原文件扩展名和选定格式来保存
-            _, ext = os.path.splitext(filename)
-            ext_lower = ext.lower()
-            if fmt == "JPEG" or ext_lower in [".jpg", ".jpeg"]:
+            # 保存图像
+            if fmt == "JPEG":
                 final_image.convert("RGB").save(out_path, "JPEG", quality=quality)
             else:
                 final_image.save(out_path, "PNG")
